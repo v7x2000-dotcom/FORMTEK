@@ -7,13 +7,23 @@ const logActivity = require('../utils/logger');
 // @access  Private
 exports.createOrder = async (req, res, next) => {
   try {
-    const { shippingInfo, cartItems, paymentMethod, paymentDetail, subtotal, discountPercent, discountAmount, total, couponCode } = req.body;
+    let { shippingInfo, cartItems, paymentMethod, paymentDetail, subtotal, discountPercent, discountAmount, total, couponCode } = req.body;
 
     if (!shippingInfo || !cartItems?.length || !paymentMethod || !total) {
       return res.status(400).json({ success: false, message: 'بيانات الطلب غير مكتملة' });
     }
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'غير مصرح. يجب تسجيل الدخول لإتمام الطلب.' });
+    }
+
+    // ── Normalize paymentMethod to match DB enum exactly ──────────────────────
+    const codAliases = ['cash on delivery', 'cod', 'cash_on_delivery', 'cashondelivery', 'الدفع عند الاستلام'];
+    if (codAliases.includes(paymentMethod?.toLowerCase?.().trim())) {
+      paymentMethod = 'Cash on Delivery';
+    } else if (paymentMethod?.toLowerCase?.().includes('instapay') || paymentMethod?.toLowerCase?.().includes('insta')) {
+      paymentMethod = 'InstaPay';
+    } else if (paymentMethod?.toLowerCase?.().includes('vodafone') || paymentMethod?.toLowerCase?.().includes('vf')) {
+      paymentMethod = 'Vodafone Cash';
     }
 
     const Order   = require('../models/Order');
@@ -110,7 +120,7 @@ exports.getOrder = async (req, res, next) => {
 exports.updateStatus = async (req, res, next) => {
   try {
     const { status, note } = req.body;
-    const validStatuses = ['Pending', 'Paid', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+    const validStatuses = ['Pending', 'Paid', 'Processing', 'Accepted', 'Preparing', 'Shipped', 'Delivered', 'Cancelled', 'Rejected', 'Refunded'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'حالة الطلب غير صالحة' });
     }
