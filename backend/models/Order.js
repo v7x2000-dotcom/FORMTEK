@@ -40,7 +40,8 @@ const OrderSchema = new mongoose.Schema({
   couponCode:      { type: String, default: '' },
 
   // Payment
-  paymentMethod:  { type: String, enum: ['Vodafone Cash', 'InstaPay', 'Cash on Delivery', 'COD', 'cash_on_delivery', 'cashOnDelivery'], required: true },
+  // Canonical values only — normalization is done in orderController before save
+  paymentMethod:  { type: String, enum: ['Vodafone Cash', 'InstaPay', 'Cash on Delivery'], required: true },
   paymentDetail:  { type: String, default: '' },
   paymentProof:   { type: String, default: '' }, // uploaded screenshot path
   

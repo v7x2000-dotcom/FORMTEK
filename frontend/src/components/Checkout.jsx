@@ -8,14 +8,24 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import useCartStore from '../store/useCartStore';
+import useAuthStore from '../store/useAuthStore';
 import { uploadAPI } from '../services/api';
 
 export default function Checkout({ onConfirmOrder, onBackToCart }) {
-  // Read cart from Zustand store
+  // Read cart and user from Zustand stores
   const { items: cartItems, coupon } = useCartStore();
   const discountPercent = useCartStore(s => s.discountPercent) || 0;
+  const { user } = useAuthStore();
 
-  const [shippingInfo, setShippingInfo] = useState({ name: '', phone: '', address: '' });
+  const [shippingInfo, setShippingInfo] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    address: '',
+    governorate: '',
+    city: '',
+    postalCode: ''
+  });
   const [paymentMethod, setPaymentMethod] = useState('Vodafone Cash');
   const [paymentDetail, setPaymentDetail] = useState('');
   const [screenshotUploaded, setScreenshotUploaded] = useState(false);
@@ -59,7 +69,7 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    if (!shippingInfo.name || !shippingInfo.phone || !shippingInfo.address) {
+    if (!shippingInfo.name || !shippingInfo.phone || !shippingInfo.address || !shippingInfo.email || !shippingInfo.governorate || !shippingInfo.city) {
       setError("برجاء ملء جميع حقول الشحن الإجبارية *");
       return;
     }
@@ -67,21 +77,34 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
       setError("برجاء إدخال رقم هاتف صحيح مكون من 11 رقم");
       return;
     }
-    if (!paymentDetail) {
-      setError(paymentMethod === "Vodafone Cash" ? "برجاء إدخال رقم فودافون كاش الذي تم التحويل منه" : "برجاء إدخال اسمك المسجل في إنستاباي");
-      return;
-    }
-    if (!screenshotUploaded) {
-      setError("برجاء رفع صورة لقطة شاشة التحويل لتأكيد دفع طلبك");
-      return;
+    if (paymentMethod !== 'Cash on Delivery') {
+      if (!paymentDetail) {
+        setError(paymentMethod === "Vodafone Cash" ? "برجاء إدخال رقم فودافون كاش الذي تم التحويل منه" : "برجاء إدخال اسمك المرسل في إنستاباي");
+        return;
+      }
+      if (!screenshotUploaded) {
+        setError("برجاء رفع صورة لقطة شاشة التحويل لتأكيد دفع طلبك");
+        return;
+      }
     }
 
     setError("");
+
+    // ── Normalize paymentMethod before sending to API ─────────────────────────
+    // Ensures compatibility with any backend version (old or new)
+    const normalizePayment = (method) => {
+      const m = method?.toLowerCase?.().replace(/\s+/g, '') ?? '';
+      if (m === 'cashondelivery' || m === 'cod' || m === 'cash_on_delivery') return 'Cash on Delivery';
+      if (m === 'instapay' || m === 'insta')   return 'InstaPay';
+      if (m === 'vodafonecash' || m === 'vf')  return 'Vodafone Cash';
+      return method; // pass-through if already correct
+    };
+
     onConfirmOrder({
       shippingInfo,
-      paymentMethod,
-      paymentDetail,
-      paymentProof: paymentProofUrl,
+      paymentMethod: normalizePayment(paymentMethod),
+      paymentDetail: paymentMethod === 'Cash on Delivery' ? 'الدفع عند الاستلام' : paymentDetail,
+      paymentProof: paymentMethod === 'Cash on Delivery' ? '' : paymentProofUrl,
       total: finalTotal
     });
   };
@@ -121,6 +144,7 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
                 </label>
                 <input 
                   type="text" 
+                  required
                   value={shippingInfo.name}
                   onChange={(e) => setShippingInfo({ ...shippingInfo, name: e.target.value })}
                   placeholder="مثال: أحمد عبد الله" 
@@ -130,14 +154,78 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[11px] text-textSecondary flex items-center justify-end gap-1.5">
+                  <span>البريد الإلكتروني للعميل *</span>
+                  <span className="text-[10px] text-textSecondary">@</span>
+                </label>
+                <input 
+                  type="email" 
+                  required
+                  value={shippingInfo.email}
+                  onChange={(e) => setShippingInfo({ ...shippingInfo, email: e.target.value })}
+                  placeholder="مثال: client@gmail.com" 
+                  className="text-xs bg-primary/60 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-neonGreen/40 text-left font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-textSecondary flex items-center justify-end gap-1.5">
                   <span>رقم الهاتف (الواتساب لإرسال الفاتورة) *</span>
                   <Phone className="w-3 h-3 text-textSecondary" />
                 </label>
                 <input 
                   type="tel" 
+                  required
                   value={shippingInfo.phone}
                   onChange={(e) => setShippingInfo({ ...shippingInfo, phone: e.target.value })}
                   placeholder="مثال: 01020304050" 
+                  className="text-xs bg-primary/60 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-neonGreen/40 text-left font-mono"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-textSecondary flex items-center justify-end gap-1.5">
+                  <span>المحافظة *</span>
+                  <MapPin className="w-3 h-3 text-textSecondary" />
+                </label>
+                <input 
+                  type="text" 
+                  required
+                  value={shippingInfo.governorate}
+                  onChange={(e) => setShippingInfo({ ...shippingInfo, governorate: e.target.value })}
+                  placeholder="مثال: القاهرة / الجيزة / الإسكندرية" 
+                  className="text-xs bg-primary/60 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-neonGreen/40 text-right"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-textSecondary flex items-center justify-end gap-1.5">
+                  <span>المدينة *</span>
+                  <MapPin className="w-3 h-3 text-textSecondary" />
+                </label>
+                <input 
+                  type="text" 
+                  required
+                  value={shippingInfo.city}
+                  onChange={(e) => setShippingInfo({ ...shippingInfo, city: e.target.value })}
+                  placeholder="مثال: مدينة نصر / الدقي" 
+                  className="text-xs bg-primary/60 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-neonGreen/40 text-right"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-textSecondary flex items-center justify-end gap-1.5">
+                  <span>الرمز البريدي (إن وجد)</span>
+                  <MapPin className="w-3 h-3 text-textSecondary" />
+                </label>
+                <input 
+                  type="text" 
+                  value={shippingInfo.postalCode}
+                  onChange={(e) => setShippingInfo({ ...shippingInfo, postalCode: e.target.value })}
+                  placeholder="الرمز البريدي" 
                   className="text-xs bg-primary/60 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-neonGreen/40 text-left font-mono"
                 />
               </div>
@@ -145,14 +233,15 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[11px] text-textSecondary flex items-center justify-end gap-1.5">
-                <span>العنوان بالتفصيل والمحافظة *</span>
+                <span>العنوان بالتفصيل *</span>
                 <MapPin className="w-3 h-3 text-textSecondary" />
               </label>
               <input 
                 type="text" 
+                required
                 value={shippingInfo.address}
                 onChange={(e) => setShippingInfo({ ...shippingInfo, address: e.target.value })}
-                placeholder="المحافظة - المدينة - الشارع - رقم المنزل" 
+                placeholder="الشارع - رقم العمارة - رقم الشقة - معالم مميزة" 
                 className="text-xs bg-primary/60 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-neonGreen/40 text-right"
               />
             </div>
@@ -162,35 +251,47 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
           <div className="flex flex-col gap-4 mt-4">
             <h3 className="text-sm font-extrabold text-white border-r-2 border-neonGreen pr-2.5">اختر وسيلة التحويل والدفع</h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-3">
               <div 
                 onClick={() => { setPaymentMethod("Vodafone Cash"); setPaymentDetail(""); }}
-                className={`p-4 rounded-xl border text-center cursor-pointer transition-all ${
+                className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
                   paymentMethod === "Vodafone Cash" 
                     ? 'border-neonGreen bg-neonGreen/5 shadow-[0_0_15px_rgba(0,255,102,0.1)]' 
                     : 'border-white/5 bg-primary/45 hover:border-white/10'
                 }`}
               >
-                <span className="text-2xl block mb-2">📱</span>
-                <span className="text-xs font-bold text-white">فودافون كاش</span>
+                <span className="text-xl block mb-1">📱</span>
+                <span className="text-[10px] font-bold text-white whitespace-nowrap">فودافون كاش</span>
               </div>
 
               <div 
                 onClick={() => { setPaymentMethod("InstaPay"); setPaymentDetail(""); }}
-                className={`p-4 rounded-xl border text-center cursor-pointer transition-all ${
+                className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
                   paymentMethod === "InstaPay" 
                     ? 'border-neonGreen bg-neonGreen/5 shadow-[0_0_15px_rgba(0,255,102,0.1)]' 
                     : 'border-white/5 bg-primary/45 hover:border-white/10'
                 }`}
               >
-                <span className="text-2xl block mb-2">⚡</span>
-                <span className="text-xs font-bold text-white">إنستا باي (InstaPay)</span>
+                <span className="text-xl block mb-1">⚡</span>
+                <span className="text-[10px] font-bold text-white whitespace-nowrap">إنستا باي</span>
+              </div>
+
+              <div 
+                onClick={() => { setPaymentMethod("Cash on Delivery"); setPaymentDetail("الدفع عند الاستلام"); }}
+                className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+                  paymentMethod === "Cash on Delivery" 
+                    ? 'border-neonGreen bg-neonGreen/5 shadow-[0_0_15px_rgba(0,255,102,0.1)]' 
+                    : 'border-white/5 bg-primary/45 hover:border-white/10'
+                }`}
+              >
+                <span className="text-xl block mb-1">💵</span>
+                <span className="text-[10px] font-bold text-white whitespace-nowrap">عند الاستلام</span>
               </div>
             </div>
 
             {/* Instruction Panel */}
             <div className="bg-primary/50 border border-white/5 rounded-xl p-5 mt-2 flex flex-col gap-4">
-              {paymentMethod === "Vodafone Cash" ? (
+              {paymentMethod === "Vodafone Cash" && (
                 <>
                   <p className="text-xs text-textSecondary leading-relaxed">
                     قم بتحويل المبلغ الإجمالي للطلب إلى رقم محفظة فودافون كاش الرسمية للمتجر:
@@ -209,7 +310,9 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
                     />
                   </div>
                 </>
-              ) : (
+              )}
+
+              {paymentMethod === "InstaPay" && (
                 <>
                   <p className="text-xs text-textSecondary leading-relaxed">
                     قم بالتحويل الفوري عبر تطبيق InstaPay إلى العنوان الرياضي التالي:
@@ -249,27 +352,40 @@ export default function Checkout({ onConfirmOrder, onBackToCart }) {
                 </>
               )}
 
+              {paymentMethod === "Cash on Delivery" && (
+                <>
+                  <p className="text-xs text-neonGreen font-bold leading-relaxed flex items-center justify-end gap-1.5">
+                    <span>📦 شحن سريع والدفع عند الاستلام (COD)</span>
+                  </p>
+                  <p className="text-[11px] text-textSecondary leading-relaxed text-right">
+                    سيتم إرسال الطلب فوراً وتجهيزه للشحن. ستقوم بالدفع نقداً لمندوب الشحن عند استلام الطلب عند باب منزلك. يرجى التأكد من الرد على المكالمات لتأكيد الشحن.
+                  </p>
+                </>
+              )}
+
               {/* Upload screenshot */}
-              <div className="flex flex-col gap-2 mt-2 pt-4 border-t border-white/5">
-                <label className="text-[11px] text-textSecondary">إرفاق لقطة شاشة التحويل لإثبات الدفع *</label>
-                <label className="bg-secondary hover:bg-secondary/80 border border-dashed border-white/10 hover:border-neonGreen/30 rounded-xl p-5 text-center cursor-pointer flex flex-col items-center justify-center gap-2 transition-colors">
-                  {uploading ? (
-                    <span className="w-5 h-5 border-2 border-neonGreen/30 border-t-neonGreen rounded-full animate-spin" />
-                  ) : (
-                    <Upload className="w-5 h-5 text-textSecondary" />
-                  )}
-                  <span className="text-[10px] text-textSecondary font-bold">
-                    {uploading ? "جاري الرفع..." : screenshotUploaded ? "✅ تم رفع الصورة بنجاح!" : "اضغط لرفع لقطة الشاشة للتحويل"}
-                  </span>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleFileUpload} 
-                    disabled={uploading}
-                    className="hidden" 
-                  />
-                </label>
-              </div>
+              {paymentMethod !== "Cash on Delivery" && (
+                <div className="flex flex-col gap-2 mt-2 pt-4 border-t border-white/5">
+                  <label className="text-[11px] text-textSecondary">إرفاق لقطة شاشة التحويل لإثبات الدفع *</label>
+                  <label className="bg-secondary hover:bg-secondary/80 border border-dashed border-white/10 hover:border-neonGreen/30 rounded-xl p-5 text-center cursor-pointer flex flex-col items-center justify-center gap-2 transition-colors">
+                    {uploading ? (
+                      <span className="w-5 h-5 border-2 border-neonGreen/30 border-t-neonGreen rounded-full animate-spin" />
+                    ) : (
+                      <Upload className="w-5 h-5 text-textSecondary" />
+                    )}
+                    <span className="text-[10px] text-textSecondary font-bold">
+                      {uploading ? "جاري الرفع..." : screenshotUploaded ? "✅ تم رفع الصورة بنجاح!" : "اضغط لرفع لقطة الشاشة للتحويل"}
+                    </span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleFileUpload} 
+                      disabled={uploading}
+                      className="hidden" 
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           </div>
 

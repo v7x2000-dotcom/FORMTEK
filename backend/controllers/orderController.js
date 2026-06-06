@@ -17,13 +17,17 @@ exports.createOrder = async (req, res, next) => {
     }
 
     // ── Normalize paymentMethod to match DB enum exactly ──────────────────────
-    const codAliases = ['cash on delivery', 'cod', 'cash_on_delivery', 'cashondelivery', 'الدفع عند الاستلام'];
-    if (codAliases.includes(paymentMethod?.toLowerCase?.().trim())) {
+    const raw = paymentMethod?.trim?.() ?? '';
+    const lower = raw.toLowerCase().replace(/\s+/g, '');
+
+    if (['cashondelivery', 'cod', 'cash_on_delivery', 'cashondelivery', 'الدفععندالاستلام'].includes(lower)) {
       paymentMethod = 'Cash on Delivery';
-    } else if (paymentMethod?.toLowerCase?.().includes('instapay') || paymentMethod?.toLowerCase?.().includes('insta')) {
+    } else if (lower.includes('instapay') || lower.includes('insta')) {
       paymentMethod = 'InstaPay';
-    } else if (paymentMethod?.toLowerCase?.().includes('vodafone') || paymentMethod?.toLowerCase?.().includes('vf')) {
+    } else if (lower.includes('vodafone') || lower.includes('vf')) {
       paymentMethod = 'Vodafone Cash';
+    } else if (!['Vodafone Cash', 'InstaPay', 'Cash on Delivery'].includes(raw)) {
+      return res.status(400).json({ success: false, message: `طريقة الدفع غير صالحة: "${raw}". القيم المقبولة: Vodafone Cash, InstaPay, Cash on Delivery` });
     }
 
     const Order   = require('../models/Order');
