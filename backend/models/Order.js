@@ -28,6 +28,7 @@ const OrderSchema = new mongoose.Schema({
     image:    String,
     price:    Number,
     quantity: Number,
+    sku:      { type: String, default: '' },
     subtotal: Number
   }],
   // Pricing
@@ -39,14 +40,14 @@ const OrderSchema = new mongoose.Schema({
   couponCode:      { type: String, default: '' },
 
   // Payment
-  paymentMethod:  { type: String, enum: ['Vodafone Cash', 'InstaPay'], required: true },
+  paymentMethod:  { type: String, enum: ['Vodafone Cash', 'InstaPay', 'Cash on Delivery', 'COD', 'cash_on_delivery', 'cashOnDelivery'], required: true },
   paymentDetail:  { type: String, default: '' },
   paymentProof:   { type: String, default: '' }, // uploaded screenshot path
   
   // Status flow
   status: {
     type: String,
-    enum: ['Pending', 'Paid', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Refunded'],
+    enum: ['Pending', 'Paid', 'Processing', 'Accepted', 'Preparing', 'Shipped', 'Delivered', 'Cancelled', 'Rejected', 'Refunded'],
     default: 'Pending'
   },
   statusHistory: [{
